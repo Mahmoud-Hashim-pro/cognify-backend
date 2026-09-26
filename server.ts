@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -9,6 +9,7 @@ import countryHandler from "./api/geo/country";
 import healthHandler from "./api/system/health";
 import learningProfileHandler from "./api/student/learningProfile";
 import imageProxyHandler from "./api/proxy-image";
+import emergencyDispatchHandler from "./api/emergency/dispatch";
 import { applyCorsHeaders } from "./api/_lib/cors";
 
 async function startServer() {
@@ -50,6 +51,11 @@ async function startServer() {
   // Image Proxy
   app.all("/api/proxy-image", (req, res) => {
     return imageProxyHandler(req, res);
+  });
+
+  // Emergency SOS automated server-side dispatch
+  app.all("/api/emergency/dispatch", (req, res) => {
+    return emergencyDispatchHandler(req, res);
   });
 
   // Gemini & AI Routes
