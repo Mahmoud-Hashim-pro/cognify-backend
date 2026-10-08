@@ -1,5 +1,22 @@
-﻿{
+{
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "env": {
+    "FIREBASE_PROJECT_ID": "gen-lang-client-0347404066"
+  },
+  "rewrites": [
+    {
+      "source": "/api/gemini/generateBenchmarkComparison",
+      "destination": "/api/gemini/auxiliary"
+    },
+    {
+      "source": "/api/gemini/generateLogicResponse",
+      "destination": "/api/gemini/auxiliary"
+    },
+    {
+      "source": "/api/gemini/generateProactiveInsights",
+      "destination": "/api/gemini/auxiliary"
+    }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",

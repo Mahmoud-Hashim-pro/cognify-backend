@@ -22,6 +22,7 @@ import { classifyRequest, type TaskCategory } from '../_lib/router.js';
 import { logTelemetry } from '../_lib/telemetry.js';
 import { ensureImageInResponse } from '../_lib/imageSynthesis.js';
 import { applyCorsHeaders } from '../_lib/cors.js';
+import { sanitizeStreamingResponse, validateAndSanitizeResponse } from '../_lib/qualityGuard.js';
 
 /** Streams from the OpenAI-compatible fallback chain. Returns the final text ("" if all failed). */
 async function streamFallback(
@@ -50,6 +51,7 @@ async function streamFallback(
             ...(params?.seed ? { seed: params.seed } : {}),
             stream: true,
           }),
+          signal: AbortSignal.timeout(15000),
         });
       } catch (err) {
         logTelemetry({ provider, model, category, latencyMs: Date.now() - t0, success: false, error: String(err) });
@@ -204,9 +206,20 @@ export default async function handler(req: any, res: any) {
     res.setHeader('X-Accel-Buffering', 'no'); // don't let a proxy buffer the stream
 
     const send = (obj: any) => {
-      if (!res.writableEnded) {
-        try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch { /* client gone */ }
-      }
+      if (res.writableEnded) return;
+
+      // Streaming prefixes are visible before the final quality guard runs.
+      // Sanitize every non-final text prefix so provider output cannot leak
+      // secrets while it is being streamed to the browser.
+      const safeObj = obj?.done === false && typeof obj?.text === 'string' && obj.text
+        ? { ...obj, text: sanitizeStreamingResponse(obj.text, {
+            accessibilityMode: profile?.accessibilityMode,
+            language: profile?.language,
+            cognitiveStage: profile?.level,
+          }).text }
+        : obj;
+
+      try { res.write(`data: ${JSON.stringify(safeObj)}\n\n`); } catch { /* client gone */ }
     };
 
     const safeHistory = Array.isArray(history) ? history : [];
@@ -243,6 +256,15 @@ export default async function handler(req: any, res: any) {
         ? '⚠️ الذكاء الاصطناعي مشغول دلوقتي. جرّب تاني بعد لحظات 🙏'
         : '⚠️ The AI is busy right now. Please try again in a moment 🙏';
     }
+
+    // Shared Output Quality Guard: sanitize output, redact sensitive secrets, repair markdown & latex
+    const validated = validateAndSanitizeResponse(full, {
+      accessibilityMode: profile?.accessibilityMode,
+      language: profile?.language,
+      cognitiveStage: profile?.level,
+    });
+    full = validated.text;
+
     // Phase 1 / Chat Enhancement: Fulfill image generation if requested by user or promised by model
     const imageResult = ensureImageInResponse(message, full, safeHistory);
     full = imageResult.text;
@@ -250,6 +272,7 @@ export default async function handler(req: any, res: any) {
     send({
       text: full,
       done: true,
+      warnings: validated.warnings,
       ...(imageResult.attachment ? { attachments: [imageResult.attachment] } : {}),
     });
   } catch (err) {

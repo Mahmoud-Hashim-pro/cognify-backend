@@ -10,6 +10,7 @@ import healthHandler from "./api/system/health";
 import learningProfileHandler from "./api/student/learningProfile";
 import imageProxyHandler from "./api/proxy-image";
 import emergencyDispatchHandler from "./api/emergency/dispatch";
+import deleteUserHandler from "./api/admin/deleteUser";
 import { applyCorsHeaders } from "./api/_lib/cors";
 
 async function startServer() {
@@ -56,6 +57,11 @@ async function startServer() {
   // Emergency SOS automated server-side dispatch
   app.all("/api/emergency/dispatch", (req, res) => {
     return emergencyDispatchHandler(req, res);
+  });
+
+  // Super Admin: Permanent Server-Side User & Data Purge
+  app.all("/api/admin/deleteUser", (req, res) => {
+    return deleteUserHandler(req, res);
   });
 
   // Gemini & AI Routes

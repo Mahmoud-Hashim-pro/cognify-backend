@@ -14,6 +14,7 @@
 
 import { applyCorsHeaders } from '../_lib/cors.js';
 import { getOrGenerateTraceId, attachTraceId, X_COGNIFY_TRACE_ID } from '../_lib/tracing.js';
+import { verifyRequestAuth } from '../_lib/authGuard.js';
 
 export interface MemoryStats {
   rss: number;
@@ -190,10 +191,31 @@ export default async function handler(req: any, res: any) {
 
   try {
     const healthPayload = getSystemHealthReport(traceId);
+    const isProd = process.env.NODE_ENV === 'production';
+
+    // Detailed operational health is restricted to a cryptographically verified
+    // authenticated admin/super-admin. An arbitrary Authorization header is not
+    // treated as proof of identity.
+    const auth = await verifyRequestAuth(req);
+    const isPrivileged = auth.authenticated &&
+      (auth.isSuperAdmin === true || auth.role === 'admin' || auth.role === 'superadmin');
+
+    let finalPayload: any = healthPayload;
+    if (isProd && !isPrivileged) {
+      // Public health stays intentionally minimal: no memory metrics, provider
+      // availability, model names, circuit internals, or environment details.
+      finalPayload = {
+        status: healthPayload.status,
+        uptimeSeconds: healthPayload.uptimeSeconds,
+        timestamp: healthPayload.timestamp,
+        traceId: healthPayload.traceId,
+      };
+    }
+
     if (typeof res.status === 'function') {
-      res.status(200).json(healthPayload);
+      res.status(200).json(finalPayload);
     } else {
-      res.end(JSON.stringify(healthPayload));
+      res.end(JSON.stringify(finalPayload));
     }
   } catch (err: any) {
     const errorPayload = {
